@@ -98,13 +98,12 @@ Bottleneck = resnet.Bottleneck
 BasicBlock= resnet.BasicBlock
 
 class ResNet(ImageClassificationBase):
-
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=True, dataset="mnist"):
         super(ResNet, self).__init__()
         self.inplanes = 32 # conv1에서 나올 채널의 차원 -> 이미지넷보다 작은 데이터이므로 32로 조정
 
         # inputs = 3x224x224 -> 3x128x128로 바뀜
-        if data == "mnist" or data == "fmnist":
+        if dataset == "mnist" or dataset == "fmnist":
             self.conv1 = nn.Conv2d(1, 32, kernel_size=3,
                                stride=1, padding=1, bias=False)
         else:
@@ -232,7 +231,7 @@ def ResNet34():
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
 def ResNet50(d, nc):
-    return ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=100, zero_init_residual=True)
+    return ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=nc, zero_init_residual=True, dataset=d)
 
 def ResNet101():
     return ResNet(BottleNeck, [3, 4, 23, 3])
