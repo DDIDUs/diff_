@@ -95,7 +95,7 @@ class ImageClassificationBase(nn.Module):
 
 conv1x1=resnet.conv1x1
 Bottleneck = resnet.Bottleneck
-BasicBlock= resnet.BasicBlock
+BasicBlock = resnet.BasicBlock
 
 class ResNet(ImageClassificationBase):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=True, dataset="mnist"):
@@ -213,28 +213,28 @@ class EarlyStopping:
         self.val_loss_min = val_loss
         
     
-def ResNet10():
-    return ResNet(BasicBlock, [1, 1, 1, 1])
+def ResNet10(d, nc):
+    return ResNet(resnet.BasicBlock, [1,1,1,1], num_classes=nc, zero_init_residual=True, dataset=d)
 
-def ResNet14():
-    return ResNet(BasicBlock, [1, 1, 2, 2])
+def ResNet14(d, nc):
+    return ResNet(resnet.BasicBlock, [1,1,2,2], num_classes=nc, zero_init_residual=True, dataset=d)
     
-def ResNet16():
-    return ResNet(BasicBlock, [1, 2, 2, 2])
+def ResNet16(d, nc):
+    return ResNet(resnet.BasicBlock, [1,2,2,2], num_classes=nc, zero_init_residual=True, dataset=d)
 
 ###########
     
-def ResNet18():
-    return ResNet(BasicBlock, [2, 2, 2, 2])
+def ResNet18(d, nc):
+    return ResNet(resnet.BasicBlock, [2,2,2,2], num_classes=nc, zero_init_residual=True, dataset=d)
 
-def ResNet34():
-    return ResNet(BasicBlock, [3, 4, 6, 3])
+def ResNet34(d, nc):
+    return ResNet(resnet.BasicBlock, [3, 4, 6, 3], num_classes=nc, zero_init_residual=True, dataset=d)
 
 def ResNet50(d, nc):
     return ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=nc, zero_init_residual=True, dataset=d)
 
-def ResNet101():
-    return ResNet(BottleNeck, [3, 4, 23, 3])
+def ResNet101(d, nc):
+    return ResNet(resnet.Bottleneck, [3, 4, 23, 3], num_classes=nc, zero_init_residual=True, dataset=d)
 
-def ResNet152():
-    return ResNet(BottleNeck, [3, 8, 36, 3])
+def ResNet152(d, nc):
+    return ResNet(resnet.Bottleneck, [3, 8, 36, 3], num_classes=nc, zero_init_residual=True, dataset=d)
