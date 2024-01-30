@@ -61,117 +61,45 @@ class BottleNeck(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-    
-def accuracy(outputs, labels):
-    _, preds = torch.max(outputs, dim=1)
-    return torch.tensor(torch.sum(preds == labels).item() / len(preds))
-    
-class ImageClassificationBase(nn.Module):
-    def training_step(self, batch):
-        images, labels = batch 
-        out = self(images)                  # Generate predictions
-        loss = F.cross_entropy(out, labels) # Calculate loss
-        return loss
-    
-    def validation_step(self, batch):
-        images, labels = batch 
-        out = self(images)                    # Generate predictions
-        loss = F.cross_entropy(out, labels)   # Calculate loss
-        acc = accuracy(out, labels)           # Calculate accuracy
-        return {'val_loss': loss.detach(), 'val_acc': acc}
-        
-    def validation_epoch_end(self, outputs):
-        batch_losses = [x['val_loss'] for x in outputs]
-        epoch_loss = torch.stack(batch_losses).mean()   # Combine losses
-        batch_accs = [x['val_acc'] for x in outputs]
-        epoch_acc = torch.stack(batch_accs).mean()      # Combine accuracies
-        return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item()}
-    
-    def epoch_end(self, epoch, result):
-        r = "Epoch [{}], last_lr: {:.5f}, train_loss: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}".format(
-            epoch, result['lrs'][-1], result['train_loss'], result['val_loss'], result['val_acc'])
-        print(r)
-        return r
 
-conv1x1=resnet.conv1x1
-Bottleneck = resnet.Bottleneck
-BasicBlock= resnet.BasicBlock
 
-class ResNet(ImageClassificationBase):
-
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=True, dataset="mnist"):
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=10, data="mnist"):
         super(ResNet, self).__init__()
-        self.inplanes = 32 # conv1에서 나올 채널의 차원 -> 이미지넷보다 작은 데이터이므로 32로 조정
-
-        # inputs = 3x224x224 -> 3x128x128로 바뀜
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1, bias=False) # 마찬가지로 전부 사이즈 조정
-        self.bn1 = nn.BatchNorm2d(32)
-        self.relu = nn.ReLU(inplace=True)
+        self.in_planes = 16
+        if data == "mnist" or data == "fmnist":
+            self.conv1 = nn.Conv2d(1, 16, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        else:
+            self.conv1 = nn.Conv2d(3, 16, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        
-        self.layer1 = self._make_layer(block, 32, layers[0], stride=1) # 3 반복
-        self.layer2 = self._make_layer(block, 64, layers[1], stride=2) # 4 반복
-        self.layer3 = self._make_layer(block, 128, layers[2], stride=2) # 6 반복
-        self.layer4 = self._make_layer(block, 256, layers[3], stride=2) # 3 반복
-        
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(256 * block.expansion, num_classes)
+        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 128, num_blocks[3], stride=2)
+        self.linear = nn.Linear(128 * block.expansion, num_classes)    
+        self.avg_pooling = nn.AvgPool2d((1,1))
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
-
-    def _make_layer(self, block, planes, blocks, stride=1): # planes -> 입력되는 채널 수
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion: 
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
-
+        for stride in strides: 
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # input [32, 128, 128] -> [C ,H, W]
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-        #x.shape =[32, 64, 64]
-
-        x = self.layer1(x)
-        #x.shape =[128, 64, 64]
-        x = self.layer2(x)
-        #x.shape =[256, 32, 32]
-        x = self.layer3(x)
-        #x.shape =[512, 16, 16]
-        x = self.layer4(x)
-        #x.shape =[1024, 8, 8]
-        
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
     
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt'):
@@ -227,7 +155,7 @@ def ResNet34():
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
 def ResNet50(d, nc):
-    return ResNet(resnet.Bottleneck, [3, 4, 6, 3], num_classes=100, zero_init_residual=True)
+    return ResNet(BottleNeck, [3, 4, 6, 3], data=d, num_classes= nc)
 
 def ResNet101():
     return ResNet(BottleNeck, [3, 4, 23, 3])
