@@ -69,7 +69,7 @@ def load_dataset(config):
 
     if config.mode == "train":
         dataset = dataset_load_func[config.dataset]("./data", train=True, download=True, transform=transform_v)
-        train_dataset, valid_dataset = train_test_split(dataset, test_size=0.2, shuffle=True)
+        train_dataset, valid_dataset = train_test_split(dataset, test_size=0.2, shuffle=False)
         
         #train_dataset = Subset(dataset, train_dataset)
         #valid_dataset = Subset(dataset, valid_dataset)
