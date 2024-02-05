@@ -1,4 +1,4 @@
-for model in vggnet resnet densenet pyramidnet custom
+for model in resnet vggnet densenet pyramidnet custom
 do
     python3 main.py \
         -dataset cifar10 \

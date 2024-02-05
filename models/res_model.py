@@ -61,43 +61,12 @@ class BottleNeck(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-    
-def accuracy(outputs, labels):
-    _, preds = torch.max(outputs, dim=1)
-    return torch.tensor(torch.sum(preds == labels).item() / len(preds))
-    
-class ImageClassificationBase(nn.Module):
-    def training_step(self, batch):
-        images, labels = batch 
-        out = self(images)                  # Generate predictions
-        loss = F.cross_entropy(out, labels) # Calculate loss
-        return loss
-    
-    def validation_step(self, batch):
-        images, labels = batch 
-        out = self(images)                    # Generate predictions
-        loss = F.cross_entropy(out, labels)   # Calculate loss
-        acc = accuracy(out, labels)           # Calculate accuracy
-        return {'val_loss': loss.detach(), 'val_acc': acc}
-        
-    def validation_epoch_end(self, outputs):
-        batch_losses = [x['val_loss'] for x in outputs]
-        epoch_loss = torch.stack(batch_losses).mean()   # Combine losses
-        batch_accs = [x['val_acc'] for x in outputs]
-        epoch_acc = torch.stack(batch_accs).mean()      # Combine accuracies
-        return {'val_loss': epoch_loss.item(), 'val_acc': epoch_acc.item()}
-    
-    def epoch_end(self, epoch, result):
-        r = "Epoch [{}], last_lr: {:.5f}, train_loss: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}".format(
-            epoch, result['lrs'][-1], result['train_loss'], result['val_loss'], result['val_acc'])
-        print(r)
-        return r
 
 conv1x1=resnet.conv1x1
 Bottleneck = resnet.Bottleneck
 BasicBlock = resnet.BasicBlock
 
-class ResNet(ImageClassificationBase):
+class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=True, dataset="mnist"):
         super(ResNet, self).__init__()
         self.inplanes = 32 # conv1에서 나올 채널의 차원 -> 이미지넷보다 작은 데이터이므로 32로 조정

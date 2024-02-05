@@ -95,64 +95,71 @@ def train(config, num, version):
 
     if config.mode == "train":
         torch.cuda.empty_cache()
+        early = EarlyStopping(patience=config.patience, dir=output_dir)
         train_dataloader, valid_dataloader = load_dataset(config)
 
         train_dataloader = DeviceDataLoader(train_dataloader, device)
         valid_dataloader = DeviceDataLoader(valid_dataloader, device)
 
-        optimizer = torch.optim.Adam(model.parameters(), config.lr, weight_decay=0.001)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, config.lr, epochs=config.epochs, 
-                                                steps_per_epoch=len(train_dataloader))
+        loss_func = nn.CrossEntropyLoss().to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, verbose=True)
 
         loss_arr = []
         best_acc = 0
         best_loss = 1000
         grad_clip = 0.01
-        with open(output_dir + "_log.txt", "w") as f:
+        with open(output_dir + "_log.txt", "w") as logFile:
             for i in range(config.epochs):
                 print("========== {} Epochs ==========".format(i))
                 #f.write("========== {} Epochs ==========".format(i) + "\n")
                 model.train()
                 lrs = []
                 train_losses = []
-                for batch in tqdm(train_dataloader):
-                    loss = model.training_step(batch)
-                    train_losses.append(loss)
-                    loss.backward()
-
-                    if grad_clip: 
-                        nn.utils.clip_grad_value_(model.parameters(), grad_clip)
-
-                    optimizer.step()
+                for batch in train_dataloader:
+                    x, y_ = batch[0].to(device), batch[1].to(device)
                     optimizer.zero_grad()
-                    lrs.append(get_lr(optimizer))
-                    scheduler.step()
+                    output = model(x)
+                    loss = loss_func(output,y_)
+                    loss.backward()
+                    optimizer.step()
 
                 if i % 10 ==0:
                     loss_arr.append(loss.cpu().detach().numpy())
-
-                model.eval()
+    
                 correct = 0
-                total = 0 
+                total = 0
                 valid_loss = 0
-
-                result = evaluate(model, valid_dataloader)
-                result['train_loss'] = torch.stack(train_losses).mean().item()
-                result['lrs'] = lrs
-                r = model.epoch_end(i, result)
-                f.write(r + "\n")
-                f.flush()
-                cu_a = result['val_acc']
-                cu_l = result['val_loss']
                 
-                #torch.save(model, output_dir + "{}_epochs.pt".format(i))
-                if best_acc < cu_a:
-                    torch.save(model, output_dir + "acc_best.pt")
-                    best_acc = cu_a
-
-                if best_loss > cu_l:
-                    torch.save(model, output_dir + "loss_best.pt")
-                    best_loss = cu_l
+                model.eval()
+                with torch.no_grad():                                                                                                   # 모델 평가
+                    for image,label in valid_dataloader:
+                        x = image.to(device)
+                        y = label.to(device)
+                            
+                        output = model.forward(x)
+                        valid_loss += loss_func(output, y)
+                        _,output_index = torch.max(output,1)
+    
+                        total += label.size(0)
+                        correct += (output_index == y).sum().float()
+                    logText = "Epoch {:03d}, Valid Acc: {:.2f}%, Valid loss: {:.2f}\n".format(i, 100*correct/total, valid_loss)
+                    train_acc = "Accuracy against Validation Data: {:.2f}%, Valid_loss: {:.2f}".format(100*correct/total, valid_loss)
+                    print(logText)
+                    logFile.write(logText)
+                    logFile.flush()
+    
+                    current_acc = (correct / total) * 100
+                    if current_acc > best_acc:
+                        print(" Accuracy increase from {:.2f}% to {:.2f}%. Model saved".format(best_acc, current_acc))
+                        best_acc = current_acc
+                        torch.save(model, '{}/acc_best.pt'.format(output_dir))
+                early(valid_loss, model)
+    
+                if early.early_stop:
+                    print("stop")
+                    break
+                scheduler.step()
     else:
         test_dataloader = load_dataset(config)
         model = torch.load('{}acc_best.pt'.format(output_dir)).to(device)
@@ -183,7 +190,7 @@ if __name__ == "__main__":
     
     #Model Parameters
     parser.add_argument('-lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('-batch_size', type=int, default=256, help='Batch size')
+    parser.add_argument('-batch_size', type=int, default=1024, help='Batch size')
     parser.add_argument('-epochs', type=int, default=120, help='Maximum # of training epochs')
     parser.add_argument('-patience', type=int, default=30, help='Early stop')
     parser.add_argument('-dataset', type=str, default="mnist", help='Early stop')

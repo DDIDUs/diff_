@@ -4,6 +4,8 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 import numpy as np
+from torch.utils.data import Subset
+
 
 def get_default_device():
     """Pick GPU if available, else CPU"""
@@ -40,15 +42,23 @@ def load_dataset(config):
     mean = np.mean(x, axis=(0, 1))/255
     std = np.std(x, axis=(0, 1))/255
 
-    train_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean,std,inplace=True),
-    ])
+    transform_t = transforms.Compose([
+            transforms.RandomChoice([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomRotation(180),
+                transforms.RandomAffine(0, shear=10, scale=(0.8, 1.2)),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+                ]),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
 
-    test_transform = transforms.Compose([
+    transform_v = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean,std,inplace=True),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     ])
+    
     dataset_load_func = {
         'mnist': torchvision.datasets.MNIST,
         'fmnist':torchvision.datasets.FashionMNIST,
@@ -58,14 +68,19 @@ def load_dataset(config):
     }
 
     if config.mode == "train":
-        train_dataset = dataset_load_func[config.dataset]("./data", train=True, download=True, transform=transforms.ToTensor())
-        valid_dataset = dataset_load_func[config.dataset]("./data", train=False, download=True, transform=transforms.ToTensor())
-        #train_dataset, valid_dataset = train_test_split(dataset, test_size=0.2, shuffle=True)
-        #train_dataset, valid_dataset = train_test_split(dataset, train_size=0.8, shuffle=True)
-        train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=8)
-        valid_dataloader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=8)
+        dataset = dataset_load_func[config.dataset]("./data", train=True, download=True, transform=transform_v)
+        train_dataset, valid_dataset = train_test_split(dataset, test_size=0.2, shuffle=True)
+        
+        #train_dataset = Subset(dataset, train_dataset)
+        #valid_dataset = Subset(dataset, valid_dataset)
+        #train_dataset.dataset.transform = transform_t
+        #valid_dataset.dataset.transform = transform_v
+        
+        train_dataloader = DataLoader(tuple(train_dataset), batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=8)
+        valid_dataloader = DataLoader(tuple(valid_dataset), batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=8)
+        
         return train_dataloader, valid_dataloader
     else:
-        test_dataset = torchvision.datasets.CIFAR100("./data", train=False, download=True, transform=test_transform)
+        test_dataset = torchvision.datasets.CIFAR100("./data", train=False, download=True, transform=transform_v)
         test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=8)
         return test_dataloader
